@@ -10,8 +10,6 @@ import (
 
 func main() {
 	var socket = "0.0.0.0:4222"
-	var subject = "Check"
-	var payload = "I am there, come to my voice!"
 	var queueName = "NATS-RPLY-22"
 	opts := []nats.Option{nats.Name("sensor")}
 	opts = setupConnOptions(opts)
@@ -20,7 +18,22 @@ func main() {
 	nc, err := nats.Connect(socket, opts...)
 	check_err(err)
 
-	listen_and_reply(nc, subject, payload, queueName)
+	listen_and_reply(nc, "custom_sensor", "ok! start collecting data", queueName)
+
+	for {
+		time.Sleep(2*time.Second)
+
+		var pub_subject = "custom_sensor_data"
+		var pub_payload = "custom_data inside this message"
+		nc.Publish(pub_subject, []byte(pub_payload))
+		nc.Flush()
+
+		if err := nc.LastError(); err != nil {
+			log.Fatal(err)
+		} else {
+			log.Printf("Published [%s] : '%s'\n", pub_subject, pub_payload)
+		}
+	}
 
 	interrupt_handler(nc)
 }
@@ -33,9 +46,8 @@ func listen_and_reply(nc *nats.Conn, subject string, payload string, queueName s
 		msg.Respond([]byte(payload))
 	})
 	nc.Flush()
-	if err := nc.LastError(); err != nil {
-		log.Fatal(err)
-	}
+	err := nc.LastError()
+	check_err(err)
 
 	log.Printf("Listening on [%s]", subject)
 	log.SetFlags(log.LstdFlags)
