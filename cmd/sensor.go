@@ -13,16 +13,20 @@ func main() {
 	var subject = "Check"
 	var payload = "I am there, come to my voice!"
 	var queueName = "NATS-RPLY-22"
-	var i = 0
-
 	opts := []nats.Option{nats.Name("sensor")}
 	opts = setupConnOptions(opts)
 
+	// Initialise NATS-client
 	nc, err := nats.Connect(socket, opts...)
-	if err != nil {
-		log.Fatal(err)
-	}
+	check_err(err)
 
+	listen_and_reply(nc, subject, payload, queueName)
+
+	interrupt_handler(nc)
+}
+
+func listen_and_reply(nc *nats.Conn, subject string, payload string, queueName string) {
+	var i = 0
 	nc.QueueSubscribe(subject, queueName, func(msg *nats.Msg) {
 		i++
 		printMsg(msg, i)
@@ -35,8 +39,9 @@ func main() {
 
 	log.Printf("Listening on [%s]", subject)
 	log.SetFlags(log.LstdFlags)
+}
 
-
+func interrupt_handler(nc *nats.Conn) {
 	// Setup the interrupt handler to drain so we don't miss
 	// requests when scaling down.
 	c := make(chan os.Signal, 1)
@@ -46,6 +51,12 @@ func main() {
 	log.Printf("Draining...")
 	nc.Drain()
 	log.Fatalf("Exiting")
+}
+
+func check_err(e error) {
+	if e != nil {
+		log.Fatal(e)
+	}
 }
 
 func printMsg(m *nats.Msg, i int) {
@@ -67,5 +78,7 @@ func setupConnOptions(opts []nats.Option) []nats.Option {
 	opts = append(opts, nats.ClosedHandler(func(nc *nats.Conn) {
 		log.Fatalf("Exiting: %v", nc.LastError())
 	}))
+
 	return opts
 }
+
