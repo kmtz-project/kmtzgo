@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/nats-io/nats.go"
 	"log"
 	"os"
@@ -18,32 +19,23 @@ func main() {
 	nc, err := nats.Connect(socket, opts...)
 	check_err(err)
 
-	listen_and_reply(nc, "custom_sensor", "ok! start collecting data", queueName)
+	opts = []nats.Option{nats.Name("sensor_publish")}
+	opts = setupConnOptions(opts)
+	nc2, err2 := nats.Connect(socket, opts...)
+	check_err(err2)
 
-	for {
-		time.Sleep(2*time.Second)
-
-		var pub_subject = "custom_sensor_data"
-		var pub_payload = "custom_data inside this message"
-		nc.Publish(pub_subject, []byte(pub_payload))
-		nc.Flush()
-
-		if err := nc.LastError(); err != nil {
-			log.Fatal(err)
-		} else {
-			log.Printf("Published [%s] : '%s'\n", pub_subject, pub_payload)
-		}
-	}
+	listen_and_reply(nc, "custom_sensor", "ok! start collecting data", queueName, nc2)
 
 	interrupt_handler(nc)
 }
 
-func listen_and_reply(nc *nats.Conn, subject string, payload string, queueName string) {
+func listen_and_reply(nc *nats.Conn, subject string, payload string, queueName string, nc2 *nats.Conn) {
 	var i = 0
 	nc.QueueSubscribe(subject, queueName, func(msg *nats.Msg) {
 		i++
 		printMsg(msg, i)
 		msg.Respond([]byte(payload))
+		publish_data(nc2)
 	})
 	nc.Flush()
 	err := nc.LastError()
@@ -51,6 +43,25 @@ func listen_and_reply(nc *nats.Conn, subject string, payload string, queueName s
 
 	log.Printf("Listening on [%s]", subject)
 	log.SetFlags(log.LstdFlags)
+}
+
+func publish_data(nc2 *nats.Conn) {
+	var into = 0
+	for {
+		time.Sleep(2*time.Second)
+
+		var pub_subject = "custom_sensor_data"
+		var pub_payload = fmt.Sprintf("%s [%d]", "custom_data inside this message", into)
+		nc2.Publish(pub_subject, []byte(pub_payload))
+		nc2.Flush()
+
+		if err2 := nc2.LastError(); err2 != nil {
+			log.Fatal(err2)
+		} else {
+			log.Printf("Published [%s] : '%s'\n", pub_subject, pub_payload)
+		}
+		into += 1
+	}
 }
 
 func interrupt_handler(nc *nats.Conn) {

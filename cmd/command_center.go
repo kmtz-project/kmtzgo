@@ -18,23 +18,14 @@ func main() {
 	check_err(err)
 	defer nc.Close()
 
+	opts = []nats.Option{nats.Name("command_center_subscribe")}
+	nc2, err2 := nats.Connect(socket, opts...)
+	check_err(err2)
+
 	request(nc, "custom_sensor", "publish some data for me, please", 5)
 
-	var i = 0
-	var sub_subj = "custom_sensor_data"
-	nc.Subscribe(sub_subj, func(msg *nats.Msg) {
-		i += 1
-		printMsg(msg, i)
-	})
-	nc.Flush()
 
-	err = nc.LastError()
-	check_err(err)
-
-	log.Printf("Listening on [%s]", sub_subj)
-	log.SetFlags(log.LstdFlags)
-
-	runtime.Goexit()
+	subscribe_to_data(nc2)
 }
 
 func request(nc *nats.Conn, subject string, payload string, sec_to_wait int) {
@@ -47,6 +38,24 @@ func request(nc *nats.Conn, subject string, payload string, sec_to_wait int) {
 	}
 	log.Printf("Published [%s] : '%s'", subject, payload)
 	log.Printf("Received  [%v] : '%s'", msg.Subject, string(msg.Data))
+}
+
+func subscribe_to_data(nc2 *nats.Conn) {
+	var i = 0
+	var sub_subj = "custom_sensor_data"
+	nc2.Subscribe(sub_subj, func(msg *nats.Msg) {
+		i += 1
+		printMsg(msg, i)
+	})
+	nc2.Flush()
+
+	err2 := nc2.LastError()
+	check_err(err2)
+
+	log.Printf("Listening on [%s]", sub_subj)
+	log.SetFlags(log.LstdFlags)
+
+	runtime.Goexit()
 }
 
 func check_err(e error) {
