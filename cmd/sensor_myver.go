@@ -57,7 +57,7 @@ var receiveEncoder bool
 
 type bitString string
 
-func search_in_data(port serial.Port, data []byte) {
+func search_in_data(port serial.Port, data []byte, nc *nats.Conn) {
 	str := string(data)
 
 	log.Println("i receive:" + str)
@@ -136,26 +136,36 @@ func search_in_data(port serial.Port, data []byte) {
 			crcOfMessage = crc8(buf, 3)
 			data_to_uart := []byte{lengthOfMessage, numberOfMessage, commandOfMessage, crcOfMessage}
 
-			data2 := make([]byte, 5)
 			if turnIterator > 0 {
 				for i := 0; i < turnIterator; i++ {
 					fmt.Printf("turnIterator: %d %d\n", turnIterator, i)
 					port_write(port, data_to_uart)
+
 					if turnAndEncoder == true {
 						receiveEncoder = true
 						//port_read(port)
-
+						data2 := make([]byte, 5)
 						n, err := port.Read(data2)
 
 						if err != nil {
 							log.Fatal(err)
+							fmt.Printf("error port read")
 						}
 						if n > 0 {
+							fmt.Printf("n: %d\n", n)
 							encoder = uint16(data2[2]) << 8
 							encoder = encoder + uint16(data2[3])
 							fmt.Println("encoder: ", encoder)
-						}
 
+							dataEncoder := make([]byte, 2)
+							dataEncoder[0] = data2[2]
+							dataEncoder[1] = data2[3]
+							nc.Publish("Encoder", []byte(dataEncoder))
+							//nc.Flush()
+						}
+						data2 = nil
+						timer := time.NewTimer(time.Millisecond * 10)
+						<-timer.C
 						//port.Read(data2)
 
 						//data = data[0:n]
@@ -270,6 +280,7 @@ func port_write(port serial.Port, data []byte) {
 	_, err := port.Write(data)
 	if err != nil {
 		log.Fatal(err)
+		fmt.Printf("error port write")
 	}
 }
 
@@ -312,13 +323,9 @@ func listen_and_reply(nc *nats.Conn, subject string, payload string /*, queueNam
 		printMsg(msg, i)
 		data_to_uart := msg.Data
 		receiveEncoder = false
-		search_in_data(port, data_to_uart)
-		//if receiveEncoder == true {
-		//	encoderBytes := make([]byte, 2)
-		//	binary.BigEndian.PutUint16(encoderBytes, encoder)
-		//	msg.Respond(encoderBytes)
-		//}
-		msg.Respond([]byte(payload))
+		search_in_data(port, data_to_uart, nc)
+		fmt.Printf("after search\n")
+		///msg.Respond([]byte(payload))
 	})
 	//nc.Flush()
 	if err := nc.LastError(); err != nil {
@@ -369,3 +376,4 @@ func setupConnOptions(opts []nats.Option) []nats.Option {
 
 	return opts
 }
+
