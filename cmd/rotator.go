@@ -14,26 +14,25 @@ func printMsg(m *nats.Msg, i int) {
 }
 
 func main() {
-	var urls = "0.0.0.0:4222"
+	var url = "0.0.0.0:4222"
 	var queueName = "ROTATOR-RPLY"
 	var subj = "rotate"
+	var msgCnt = 0
 
 	// Connect Options.
 	opts := []nats.Option{nats.Name("Rotator Responder")}
 	opts = setupConnOptions(opts)
 
 	// Connect to NATS
-	nc, err := nats.Connect(urls, opts...)
+	nc, err := nats.Connect(url, opts...)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	reply, i := "myreply", 0
-
 	nc.QueueSubscribe(subj, queueName, func(msg *nats.Msg) {
-		i++
-		printMsg(msg, i)
-		msg.Respond([]byte(reply))
+		msgCnt++
+		printMsg(msg, msgCnt)
+		msg.Respond([]byte(generateRespond()))
 	})
 	nc.Flush()
 
@@ -56,6 +55,10 @@ func main() {
 	log.Printf("Draining...")
 	nc.Drain()
 	log.Fatalf("Exiting")
+}
+
+func generateRespond() string {
+	return "myreply"
 }
 
 func setupConnOptions(opts []nats.Option) []nats.Option {
