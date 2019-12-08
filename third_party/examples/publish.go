@@ -11,24 +11,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package examples
 
 import (
-"flag"
-"log"
-"os"
-"runtime"
-"time"
+	"flag"
+	"log"
+	"os"
 
-"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go"
 )
 
 // NOTE: Can test with demo servers.
-// nats-sub -s demo.nats.io <subject>
-// nats-sub -s demo.nats.io:4443 <subject> (TLS version)
+// nats-pub -s demo.nats.io <subject> <msg>
+// nats-pub -s demo.nats.io:4443 <subject> <msg> (TLS version)
 
 func usage() {
-	log.Printf("Usage: nats-sub [-s server] [-creds file] [-t] <subject>\n")
+	log.Printf("Usage: nats-pub [-s server] [-creds file] <subject> <msg>\n")
 	flag.PrintDefaults()
 }
 
@@ -37,14 +35,9 @@ func showUsageAndExit(exitcode int) {
 	os.Exit(exitcode)
 }
 
-func printMsg(m *nats.Msg, i int) {
-	log.Printf("[#%d] Received on [%s]: '%s'", i, m.Subject, string(m.Data))
-}
-
 func main() {
 	var urls = flag.String("s", nats.DefaultURL, "The nats server URLs (separated by comma)")
 	var userCreds = flag.String("creds", "", "User Credentials File")
-	var showTime = flag.Bool("t", false, "Display timestamps")
 	var showHelp = flag.Bool("h", false, "Show help message")
 
 	log.SetFlags(0)
@@ -56,13 +49,12 @@ func main() {
 	}
 
 	args := flag.Args()
-	if len(args) != 1 {
+	if len(args) != 2 {
 		showUsageAndExit(1)
 	}
 
 	// Connect Options.
-	opts := []nats.Option{nats.Name("NATS Sample Subscriber")}
-	opts = setupConnOptions(opts)
+	opts := []nats.Option{nats.Name("NATS Sample Publisher")}
 
 	// Use UserCredentials
 	if *userCreds != "" {
@@ -74,41 +66,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer nc.Close()
+	subj, msg := args[0], []byte(args[1])
 
-	subj, i := args[0], 0
-
-	nc.Subscribe(subj, func(msg *nats.Msg) {
-		i += 1
-		printMsg(msg, i)
-	})
+	nc.Publish(subj, msg)
 	nc.Flush()
 
 	if err := nc.LastError(); err != nil {
 		log.Fatal(err)
+	} else {
+		log.Printf("Published [%s] : '%s'\n", subj, msg)
 	}
-
-	log.Printf("Listening on [%s]", subj)
-	if *showTime {
-		log.SetFlags(log.LstdFlags)
-	}
-
-	runtime.Goexit()
-}
-
-func setupConnOptions(opts []nats.Option) []nats.Option {
-	totalWait := 10 * time.Minute
-	reconnectDelay := time.Second
-
-	opts = append(opts, nats.ReconnectWait(reconnectDelay))
-	opts = append(opts, nats.MaxReconnects(int(totalWait/reconnectDelay)))
-	opts = append(opts, nats.DisconnectErrHandler(func(nc *nats.Conn, err error) {
-		log.Printf("Disconnected due to:%s, will attempt reconnects for %.0fm", err, totalWait.Minutes())
-	}))
-	opts = append(opts, nats.ReconnectHandler(func(nc *nats.Conn) {
-		log.Printf("Reconnected [%s]", nc.ConnectedUrl())
-	}))
-	opts = append(opts, nats.ClosedHandler(func(nc *nats.Conn) {
-		log.Fatalf("Exiting: %v", nc.LastError())
-	}))
-	return opts
 }
